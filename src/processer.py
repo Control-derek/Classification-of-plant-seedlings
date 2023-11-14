@@ -4,22 +4,19 @@ import math
 from skimage.feature import hog
 from skimage.feature import local_binary_pattern
 
-# 抽取绿色
-def extractGreen(image, kernel_size=3):  # kernel_size 滤波卷积核大小
+def extractGreen(image, enable_ACE=False, ratio=4, radius=3):
     # 绿色范围
-    lower_green = np.array([35, 43, 46], dtype="uint8")  # 颜色下限[色调，饱和度，亮度]
-    upper_green = np.array([77, 255, 255], dtype="uint8")  # 颜色上限
+    lower_green = np.array([30, 43, 46], dtype="uint8")  # 颜色下限[色调，饱和度，亮度]
+    upper_green = np.array([85, 255, 255], dtype="uint8")  # 颜色上限
     
-    # 高斯滤波
-    # img_blur = cv2.GaussianBlur(image, (11, 11), 0)
-    # 中值滤波
-    img_blur = cv2.medianBlur(image, ksize=kernel_size)
-    img_hsv = cv2.cvtColor(img_blur, cv2.COLOR_BGR2HSV)
+    img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     # 根据阈值找到对应颜色，二值化
     mask = cv2.inRange(img_hsv, lower_green, upper_green)
     # 按位与
     output = cv2.bitwise_and(image, image, mask=mask)
-
+    if enable_ACE:
+        ace_img = ACE(output, ratio, radius)
+        output = cv2.bitwise_and(ace_img, ace_img, mask=mask)
     return output
 
 # 图像均衡化
@@ -49,9 +46,9 @@ def SIFT(gre_img):
     return kp, des
 
 # 初始化BOW训练器
-def bow_init(feature_sift_list):
+def bow_init(feature_sift_list, num_center=100):
     # 100类
-    bow_kmeans_trainer = cv2.BOWKMeansTrainer(100)
+    bow_kmeans_trainer = cv2.BOWKMeansTrainer(num_center)
     
     for feature_sift in feature_sift_list:
         if type(feature_sift) == type(None):
@@ -63,8 +60,6 @@ def bow_init(feature_sift_list):
     voc = bow_kmeans_trainer.cluster()
     
     # FLANN匹配  
-    # algorithm用来指定匹配所使用的算法，可以选择的有LinearIndex、KTreeIndex、KMeansIndex、CompositeIndex和AutotuneInde
-    # 这里选择的是KTreeIndex(使用kd树实现最近邻搜索)
     flann_params = dict(algorithm=1,tree=5)
     flann = cv2.FlannBasedMatcher(flann_params,{})
     
@@ -85,6 +80,8 @@ def bow_feature(bow_img_descriptor_extractor, image_list):
     for i in range(len(image_list)):
         image = cv2.cvtColor(image_list[i], cv2.COLOR_BGR2GRAY)
         feature_bow = bow_img_descriptor_extractor.compute(image,sift.detect(image))
+        if type(feature_bow) == type(None):
+            continue
         feature_bow_list.append(feature_bow)
     return feature_bow_list
 
@@ -169,3 +166,6 @@ def zmIceColor(I, ratio=4, radius=3): #ratio对比度增强因子，radius卷积
     for k in range(3):
         res[:,:,k] = stretchImage(zmIceFast(I[:,:,k], ratio, radius))
     return res
+
+def ACE(img, ratio=4, radius=3):
+    return np.uint8(zmIceColor(img/255.0, ratio=ratio, radius=radius) * 255)

@@ -2,3 +2,4 @@ dataset
 *.pkl
 out
 *.json
+*.png

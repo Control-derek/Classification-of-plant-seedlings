@@ -30,6 +30,7 @@ class PlantSeedDataset(Dataset):
     # @staticmethod
     def get_img_info(self, data_dir):
         data_info = []
+        self.imgs = []
         path_imgs = []
         labels = []
         imgs_name = []        
@@ -44,6 +45,10 @@ class PlantSeedDataset(Dataset):
                     path_img = os.path.join(root, sub_dir, img_name)
                     label = sub_dir
                     path_imgs.append(path_img)
+                    img = Image.open(path_img).convert('RGB')     
+                    if self.transform is not None:
+                        img = self.transform(img)
+                    self.imgs.append(img)
                     labels.append(self.name_dic[label])
                     
                     data_info.append((path_img, label, img_name))
