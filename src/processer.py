@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import math
+from skimage.feature import hog
+from skimage.feature import local_binary_pattern
 
 # 抽取绿色
 def extractGreen(image, kernel_size=3):  # kernel_size 滤波卷积核大小
@@ -29,6 +31,80 @@ def equalize(image):
     r = cv2.equalizeHist(r)
     equ_img = cv2.merge((b,g,r))
     return equ_img
+
+def processer(img):
+    # 颜色增强
+    ace_img = zmIceColor(img/255.0, ratio=4, radius=3)
+    ace_img  = ace_img * 255
+    ace_img = np.uint8(ace_img)
+    # 抽绿色
+    gre_img = extractGreen(ace_img, 7)
+    return gre_img
+
+def SIFT(gre_img):
+    # 创建SIFT特征检测器
+    sift_after = cv2.SIFT_create()
+    # 特征点提取与描述子生成
+    kp, des = sift_after.detectAndCompute(gre_img, None)
+    return kp, des
+
+# 初始化BOW训练器
+def bow_init(feature_sift_list):
+    # 100类
+    bow_kmeans_trainer = cv2.BOWKMeansTrainer(100)
+    
+    for feature_sift in feature_sift_list:
+        if type(feature_sift) == type(None):
+            continue
+        # print(feature_sift.shape)
+        bow_kmeans_trainer.add(feature_sift)
+    
+    # 进行k-means聚类，返回词汇字典 也就是聚类中心
+    voc = bow_kmeans_trainer.cluster()
+    
+    # FLANN匹配  
+    # algorithm用来指定匹配所使用的算法，可以选择的有LinearIndex、KTreeIndex、KMeansIndex、CompositeIndex和AutotuneInde
+    # 这里选择的是KTreeIndex(使用kd树实现最近邻搜索)
+    flann_params = dict(algorithm=1,tree=5)
+    flann = cv2.FlannBasedMatcher(flann_params,{})
+    
+    #初始化bow提取器(设置词汇字典),用于提取每一张图像的BOW特征描述
+    sift = cv2.SIFT_create()
+    bow_img_descriptor_extractor = cv2.BOWImgDescriptorExtractor(sift, flann)        
+    bow_img_descriptor_extractor.setVocabulary(voc)
+    
+    # print(bow_img_descriptor_extractor)
+    
+    return bow_img_descriptor_extractor
+
+# 提取BOW特征
+def bow_feature(bow_img_descriptor_extractor, image_list):
+    # 分别对每个图片提取BOW特征，获得BOW特征列表
+    feature_bow_list = [] 
+    sift = cv2.SIFT_create()
+    for i in range(len(image_list)):
+        image = cv2.cvtColor(image_list[i], cv2.COLOR_BGR2GRAY)
+        feature_bow = bow_img_descriptor_extractor.compute(image,sift.detect(image))
+        feature_bow_list.append(feature_bow)
+    return feature_bow_list
+
+
+def HOG(gre_img, orientations=9, pixels_per_cell=6, cells_per_block=3):
+    gray_img = cv2.cvtColor(gre_img,cv2.COLOR_BGR2GRAY)
+    hog_feature, hog_img = hog(gray_img, orientations=orientations, 
+                               pixels_per_cell=(pixels_per_cell, pixels_per_cell), 
+                               cells_per_block=(cells_per_block, cells_per_block), 
+                               visualize=True, feature_vector=True)
+    return hog_feature, hog_img
+
+# 局部二值特征
+def LBP(gre_img, n_points=8, radius = 4, method = 'var'):
+    b, g, r = cv2.split(gre_img)
+    b = local_binary_pattern(b, n_points, radius, method)
+    g = local_binary_pattern(g, n_points, radius, method)
+    r = local_binary_pattern(r, n_points, radius, method)
+    feature_lbp = cv2.merge((b, g, r))
+    return feature_lbp
 
 ''' 
 以下为ACE实现
